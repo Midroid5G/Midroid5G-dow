@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>أداة تحميل الملفات</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#6366f1">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+    background: linear-gradient(135deg, #1e293b, #0f172a);
+    min-height: 100vh;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 32px;
+    width: 100%;
+    max-width: 480px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+  }
+  h1 {
+    font-size: 22px;
+    margin: 0 0 6px;
+    color: #0f172a;
+    text-align: center;
+  }
+  p.sub {
+    text-align: center;
+    color: #64748b;
+    font-size: 14px;
+    margin: 0 0 24px;
+  }
+  label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: #334155;
+    margin-bottom: 8px;
+  }
+  input[type="text"] {
+    width: 100%;
+    padding: 12px 14px;
+    border: 2px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 14px;
+    outline: none;
+    direction: ltr;
+    text-align: left;
+    transition: border-color .2s;
+  }
+  input[type="text"]:focus { border-color: #6366f1; }
+  .filename-row { margin-top: 16px; }
+  button {
+    width: 100%;
+    margin-top: 20px;
+    padding: 13px;
+    border: none;
+    border-radius: 10px;
+    background: #6366f1;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background .2s, transform .1s;
+  }
+  button:hover { background: #4f46e5; }
+  button:active { transform: scale(0.98); }
+  button:disabled { background: #a5b4fc; cursor: not-allowed; }
+  .status {
+    margin-top: 16px;
+    font-size: 13px;
+    text-align: center;
+    min-height: 18px;
+    color: #475569;
+  }
+  .status.error { color: #dc2626; }
+  .status.success { color: #16a34a; }
+  .progress-wrap {
+    margin-top: 12px;
+    height: 8px;
+    background: #e2e8f0;
+    border-radius: 999px;
+    overflow: hidden;
+    display: none;
+  }
+  .progress-bar {
+    height: 100%;
+    width: 0%;
+    background: #6366f1;
+    transition: width .15s;
+  }
+  .hint {
+    margin-top: 18px;
+    font-size: 12px;
+    color: #94a3b8;
+    line-height: 1.7;
+    background: #f8fafc;
+    padding: 12px 14px;
+    border-radius: 10px;
+  }
+  .hint b { color: #64748b; }
+  .fallback-link {
+    display: none;
+    margin-top: 14px;
+    text-align: center;
+  }
+  .fallback-link a {
+    color: #6366f1;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .fallback-link a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1>⬇️ أداة تحميل الملفات</h1>
+  <p class="sub">الصق رابط أي ملف واحصل عليه مباشرة على جهازك</p>
+
+  <label for="urlInput">رابط الملف</label>
+  <input type="text" id="urlInput" placeholder="https://example.com/file.pdf" autocomplete="off">
+
+  <div class="filename-row">
+    <label for="nameInput">اسم الملف عند الحفظ (اختياري)</label>
+    <input type="text" id="nameInput" placeholder="سيتم تحديده تلقائياً إذا تركته فارغاً">
+  </div>
+
+  <button id="downloadBtn">تحميل الملف</button>
+
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-bar" id="progressBar"></div>
+  </div>
+
+  <div class="status" id="status"></div>
+  <div class="fallback-link" id="fallbackLink"></div>
+
+  <div class="hint">
+    <b>ملاحظة:</b> إذا شغّلت السيرفر البروكسي المحلي (server.js) على جهازك، فعّل الخيار
+    تحت عشان تتجاوز قيود CORS تلقائياً. إذا السيرفر مو شغال، بترجع الأداة للطريقة
+    العادية وتعطيك رابط بديل عند الفشل.
+  </div>
+
+  <label style="margin-top:16px; display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; color:#334155; font-size:13px;">
+    <input type="checkbox" id="useProxy" style="width:16px; height:16px; margin:0;">
+    استخدام السيرفر البروكسي المحلي (localhost:3000)
+  </label>
+</div>
+
+<script>
+const urlInput = document.getElementById('urlInput');
+const nameInput = document.getElementById('nameInput');
+const btn = document.getElementById('downloadBtn');
+const status = document.getElementById('status');
+const progressWrap = document.getElementById('progressWrap');
+const progressBar = document.getElementById('progressBar');
+const fallbackLink = document.getElementById('fallbackLink');
+
+function guessFilename(url) {
+  try {
+    const u = new URL(url);
+    const parts = u.pathname.split('/').filter(Boolean);
+    const last = parts[parts.length - 1];
+    if (last && last.includes('.')) return decodeURIComponent(last);
+  } catch (e) {}
+  return 'download';
+}
+
+function setStatus(msg, type) {
+  status.textContent = msg;
+  status.className = 'status' + (type ? ' ' + type : '');
+}
+
+async function downloadFile() {
+  const url = urlInput.value.trim();
+  if (!url) {
+    setStatus('الرجاء إدخال رابط الملف', 'error');
+    return;
+  }
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(url);
+  } catch (e) {
+    setStatus('الرابط غير صالح، تأكد أنه يبدأ بـ http:// أو https://', 'error');
+    return;
+  }
+
+  const customName = nameInput.value.trim();
+  const filename = customName || guessFilename(url);
+
+  btn.disabled = true;
+  setStatus('جاري التحميل...', '');
+  fallbackLink.style.display = 'none';
+  progressWrap.style.display = 'block';
+  progressBar.style.width = '0%';
+
+  const useProxy = document.getElementById('useProxy').checked;
+  const fetchUrl = useProxy
+    ? 'http://localhost:3000/download?url=' + encodeURIComponent(url)
+    : url;
+
+  try {
+    const response = await fetch(fetchUrl, { mode: 'cors' });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+
+    const contentLength = response.headers.get('Content-Length');
+    const total = contentLength ? parseInt(contentLength, 10) : null;
+    let received = 0;
+
+    const reader = response.body.getReader();
+    const chunks = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      if (total) {
+        progressBar.style.width = Math.round((received / total) * 100) + '%';
+      } else {
+        progressBar.style.width = '90%';
+      }
+    }
+
+    const blob = new Blob(chunks);
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(blobUrl);
+
+    progressBar.style.width = '100%';
+    setStatus('✅ تم تحميل الملف بنجاح: ' + filename, 'success');
+  } catch (err) {
+    if (useProxy) {
+      setStatus('⚠️ تعذر الوصول للسيرفر البروكسي. تأكد إنه شغال (node server.js)', 'error');
+    } else {
+      setStatus('⚠️ تعذر التحميل التلقائي (على الأغلب بسبب قيود CORS). جرب تفعيل البروكسي المحلي', 'error');
+    }
+    fallbackLink.style.display = 'block';
+    fallbackLink.innerHTML = '<a href="' + url + '" target="_blank" rel="noopener">افتح الرابط مباشرة في تبويب جديد ↗</a>';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+btn.addEventListener('click', downloadFile);
+urlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') downloadFile(); });
+
+// تسجيل الـ Service Worker (يفعّل خصائص PWA مثل التثبيت والعمل شبه offline)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(() => {});
+  });
+}
+</script>
+
+</body>
+</html>
